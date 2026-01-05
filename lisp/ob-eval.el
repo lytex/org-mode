@@ -1,6 +1,6 @@
 ;;; ob-eval.el --- Babel Functions for External Code Evaluation -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2009-2025 Free Software Foundation, Inc.
+;; Copyright (C) 2009-2026 Free Software Foundation, Inc.
 
 ;; Author: Eric Schulte
 ;; Keywords: literate programming, reproducible research, comint
@@ -33,7 +33,8 @@
 
 (eval-when-compile (require 'subr-x))  ; For `string-empty-p', Emacs < 29
 
-(defvar org-babel-error-buffer-name "*Org-Babel Error Output*")
+(defvar org-babel-error-buffer-name "*Org-Babel Error Output*"
+  "The buffer name Org Babel evaluate error output.")
 (declare-function org-babel-temp-file "ob-core" (prefix &optional suffix))
 
 (defun org-babel-eval-error-notify (exit-code stderr)

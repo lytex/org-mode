@@ -1,6 +1,6 @@
 ;;; ox-latex.el --- LaTeX Backend for Org Export Engine -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2011-2025 Free Software Foundation, Inc.
+;; Copyright (C) 2011-2026 Free Software Foundation, Inc.
 
 ;; Author: Nicolas Goaziou <n.goaziou at gmail dot com>
 ;; Maintainer: Daniel Fleischer <danflscr@gmail.com>
@@ -588,6 +588,7 @@ like that: \"%%\".
 Setting :latex-title-command in publishing projects will take
 precedence over this variable."
   :group 'org-export-latex
+  :safe #'stringp
   :type '(string :tag "Format string"))
 
 (defcustom org-latex-subtitle-format "\\\\\\medskip\n\\large %s"
@@ -597,6 +598,7 @@ which is replaced with the subtitle."
   :group 'org-export-latex
   :version "26.1"
   :package-version '(Org . "8.3")
+  :safe #'stringp
   :type '(string :tag "Format string"))
 
 (defcustom org-latex-subtitle-separate nil
@@ -604,6 +606,7 @@ which is replaced with the subtitle."
   :group 'org-export-latex
   :version "26.1"
   :package-version '(Org . "8.3")
+  :safe #'booleanp
   :type 'boolean)
 
 (defcustom org-latex-toc-command "\\tableofcontents\n\n"
@@ -616,7 +619,7 @@ the #+TOC keyword."
 
 (defcustom org-latex-hyperref-template
   "\\hypersetup{\n pdfauthor={%a},\n pdftitle={%t},\n pdfkeywords={%k},
- pdfsubject={%d},\n pdfcreator={%c}, \n pdflang={%L}}\n"
+ pdfsubject={%d},\n pdfcreator={%c},\n pdflang={%L}}\n"
   "Template for hyperref package options.
 
 This format string may contain these elements:
@@ -643,7 +646,8 @@ precedence over this variable."
   :version "26.1"
   :package-version '(Org . "8.3")
   :type '(choice (const :tag "No template" nil)
-		 (string :tag "Format string")))
+		 (string :tag "Format string"))
+  :safe #'string-or-null-p)
 
 ;;;; Headline
 
@@ -675,6 +679,7 @@ command like \"\\sidenote{%s%s}\" that you want to use.
 The value will be passed as an argument to `format' as the following
   (format org-latex-default-footnote-command
      footnote-description footnote-label)"
+
   :group 'org-export-latex
   :package-version '(Org . "9.7")
   :type 'string)
@@ -698,17 +703,17 @@ The value will be passed as an argument to `format' as the following
 ;;;; Timestamps
 
 (defcustom org-latex-active-timestamp-format "\\textit{%s}"
-  "A printf format string to be applied to active timestamps."
+  "A `format' string to be applied to active timestamps."
   :group 'org-export-latex
   :type 'string)
 
 (defcustom org-latex-inactive-timestamp-format "\\textit{%s}"
-  "A printf format string to be applied to inactive timestamps."
+  "A `format' string to be applied to inactive timestamps."
   :group 'org-export-latex
   :type 'string)
 
 (defcustom org-latex-diary-timestamp-format "\\textit{%s}"
-  "A printf format string to be applied to diary timestamps."
+  "A `format' string to be applied to diary timestamps."
   :group 'org-export-latex
   :type 'string)
 
@@ -956,13 +961,13 @@ The first two options provide basic syntax
 highlighting (listings), or none at all (verbatim).
 
 When using listings, you also need to make use of LaTeX package
-\"listings\".  The \"color\" LaTeX package is also needed if you
-would like color too.  These can simply be added to
+\"listings\".  The \"xcolor\" LaTeX package is also needed for
+color management.  These can simply be added to
 `org-latex-packages-alist', using customize or something like:
 
   (require \\='ox-latex)
   (add-to-list \\='org-latex-packages-alist \\='(\"\" \"listings\"))
-  (add-to-list \\='org-latex-packages-alist \\='(\"\" \"color\"))
+  (add-to-list \\='org-latex-packages-alist \\='(\"\" \"xcolor\"))
 
 There are two further options for more comprehensive
 fontification.  The first can be set with,
@@ -1422,7 +1427,12 @@ Can also be set in buffers via #+LATEX_COMPILER.  See also
 	  (const :tag "LuaLaTeX" "lualatex")
 	  (const :tag "Unset" ""))
   :version "26.1"
-  :package-version '(Org . "9.0"))
+  :package-version '(Org . "9.0")
+  :safe (lambda (s)
+          (and (stringp s)              ; must be a string
+               ;; either an empty string or one of the supported compilers
+               (or (length= s 0)
+                   (member s org-latex-compilers)))))
 
 (defconst org-latex-compilers '("pdflatex" "xelatex" "lualatex")
   "Known LaTeX compilers.
@@ -1536,6 +1546,18 @@ calling `org-latex-compile'."
 	   (regexp :tag "Regexp")
 	   (string :tag "Message"))))
 
+
+(defcustom org-latex-toc-include-unnumbered nil
+  "Whether to include unnumbered headings in the table of contents.
+
+The default behaviour is to include numbered headings only, as it is
+usually the case in LaTeX (but different from other Org exporters).
+To include an unnumbered heading, set the `:UNNUMBERED:'
+property to `toc'"
+  :group 'org-export-latex
+  :package-version '(Org . "9.8")
+  :type 'boolean
+  :safe #'booleanp)
 
 
 ;;; Internal Functions
@@ -1926,16 +1948,24 @@ INFO is a plist used as a communication channel."
                     ;; Here the actual name of the LANGUAGE or LANG is used.
 		    (or (plist-get plist :lang-name)
 		        lang))))
-    `((?a . ,(org-export-data (plist-get info :author) info))
-      (?t . ,(org-export-data (plist-get info :title) info))
-      (?s . ,(org-export-data (plist-get info :subtitle) info))
+    `((?a . ,(if (plist-get info :with-author)
+                 (org-export-data (plist-get info :author) info)
+               ""))
+      (?t . ,(if (plist-get info :with-title)
+                 (org-export-data (plist-get info :title) info)
+               ""))
+      (?s . ,(if (plist-get info :with-title)
+                 (org-export-data (plist-get info :subtitle) info)
+               ""))
       (?k . ,(org-export-data (org-latex--wrap-latex-math-block
 			       (plist-get info :keywords) info)
 			      info))
       (?d . ,(org-export-data (org-latex--wrap-latex-math-block
 			       (plist-get info :description) info)
 			      info))
-      (?c . ,(plist-get info :creator))
+      (?c . ,(if (plist-get info :with-creator)
+                 (plist-get info :creator)
+               ""))
       (?l . ,language)
       (?L . ,(capitalize language))
       (?D . ,(org-export-data (org-export-get-date info) info)))))
@@ -2237,11 +2267,10 @@ CONTENTS is nil.  INFO is a plist holding contextual information."
 		(org-export-get-footnote-definition footnote-reference info)
 		info t)))
       ;; Use \footnotemark if reference is within another footnote
-      ;; reference, footnote definition, table cell, verse block, or
-      ;; item's tag.
+      ;; reference, footnote definition, table cell, or item's tag.
       ((or (org-element-lineage footnote-reference
-				'(footnote-reference footnote-definition
-						     table-cell verse-block))
+				'( footnote-reference footnote-definition
+				   table-cell))
 	   (org-element-type-p
 	    (org-element-parent-element footnote-reference) 'item))
        "\\footnotemark")
@@ -2269,66 +2298,82 @@ CONTENTS is nil.  INFO is a plist holding contextual information."
 
 ;;;; Headline
 
+(defun org-latex--get-section-format (headline info)
+  "Get section format for HEADLINE.
+INFO is the communication plist."
+  (let* ((class (plist-get info :latex-class))
+	 (level (org-export-get-relative-level headline info))
+         (numberedp (org-export-numbered-headline-p headline info))
+         (class-sectioning (assoc class (plist-get info :latex-classes))))
+    (let ((sec (if (functionp (nth 2 class-sectioning))
+		   (funcall (nth 2 class-sectioning) level numberedp)
+		 (nth (1+ level) class-sectioning))))
+      (cond
+       ;; No section available for that LEVEL.
+       ((not sec) nil)
+       ;; Section format directly returned by a function.  Add
+       ;; placeholder for contents.
+       ((stringp sec) (concat sec "\n%s"))
+       ;; (numbered-section . unnumbered-section)
+       ((not (consp (cdr sec)))
+	(concat (funcall (if numberedp #'car #'cdr) sec) "\n%s"))
+       ;; (numbered-open numbered-close)
+       ((= (length sec) 2)
+	(when numberedp (concat (car sec) "\n%s" (nth 1 sec))))
+       ;; (num-in num-out no-num-in no-num-out)
+       ((= (length sec) 4)
+	(if numberedp (concat (car sec) "\n%s" (nth 1 sec))
+	  (concat (nth 2 sec) "\n%s" (nth 3 sec))))))))
+
+(defconst org-latex--section-backend
+  (org-export-create-backend
+   :parent 'latex
+   :transcoders
+   '((underline . (lambda (o c i) (format "\\underline{%s}" c)))
+     ;; LaTeX isn't happy when you try to use \verb inside the argument of other
+     ;; commands (like \section, etc.), and this causes compilation to fail.
+     ;; So, within headings it's a good idea to replace any instances of \verb
+     ;; with \texttt.
+     (code . (lambda (o _ _) (org-latex--protect-texttt (org-element-property :value o))))
+     (verbatim . (lambda (o _ _) (org-latex--protect-texttt (org-element-property :value o))))))
+  "Export backend that hard-codes \\underline within \\section and alike.")
+
+(defconst org-latex--section-no-footnote-backend
+  (org-export-create-backend
+   :parent org-latex--section-backend
+   :transcoders
+   `((footnote-reference . ignore)))
+  "Export backend that strips footnotes from title.
+
+Footnotes are not allowed in \\section and similar commands that
+contribute to TOC and footers.
+See https://orgmode.org/list/691643eb-49d0-45c3-ab7f-a1edbd093bef@gmail.com
+https://texfaq.org/FAQ-ftnsect")
+
 (defun org-latex-headline (headline contents info)
   "Transcode a HEADLINE element from Org to LaTeX.
 CONTENTS holds the contents of the headline.  INFO is a plist
 holding contextual information."
   (unless (org-element-property :footnote-section-p headline)
-    (let* ((class (plist-get info :latex-class))
-	   (level (org-export-get-relative-level headline info))
+    (let* ((level (org-export-get-relative-level headline info))
+           ;; "LaTeX TOC handling"
+           ;; :unnumbered: toc will add the heading to the ToC
+           ;; "Org TOC handling"
+           ;; :unnumbered: notoc to suppress heading from the ToC
+           ;; else include all headings (including unnumbered) like other modes
+           (unnumbered-type (org-export-get-node-property :UNNUMBERED headline t))
 	   (numberedp (org-export-numbered-headline-p headline info))
-	   (class-sectioning (assoc class (plist-get info :latex-classes)))
 	   ;; Section formatting will set two placeholders: one for
 	   ;; the title and the other for the contents.
-	   (section-fmt
-	    (let ((sec (if (functionp (nth 2 class-sectioning))
-			   (funcall (nth 2 class-sectioning) level numberedp)
-			 (nth (1+ level) class-sectioning))))
-	      (cond
-	       ;; No section available for that LEVEL.
-	       ((not sec) nil)
-	       ;; Section format directly returned by a function.  Add
-	       ;; placeholder for contents.
-	       ((stringp sec) (concat sec "\n%s"))
-	       ;; (numbered-section . unnumbered-section)
-	       ((not (consp (cdr sec)))
-		(concat (funcall (if numberedp #'car #'cdr) sec) "\n%s"))
-	       ;; (numbered-open numbered-close)
-	       ((= (length sec) 2)
-		(when numberedp (concat (car sec) "\n%s" (nth 1 sec))))
-	       ;; (num-in num-out no-num-in no-num-out)
-	       ((= (length sec) 4)
-		(if numberedp (concat (car sec) "\n%s" (nth 1 sec))
-		  (concat (nth 2 sec) "\n%s" (nth 3 sec)))))))
-	   ;; Create a temporary export backend that hard-codes
-	   ;; "\underline" within "\section" and alike.
-	   (section-backend
-            (org-export-create-backend
-             :parent 'latex
-             :transcoders
-             '((underline . (lambda (o c i) (format "\\underline{%s}" c)))
-               ;; LaTeX isn't happy when you try to use \verb inside the argument of other
-               ;; commands (like \section, etc.), and this causes compilation to fail.
-               ;; So, within headings it's a good idea to replace any instances of \verb
-               ;; with \texttt.
-               (code . (lambda (o _ _) (org-latex--protect-texttt (org-element-property :value o))))
-               (verbatim . (lambda (o _ _) (org-latex--protect-texttt (org-element-property :value o)))))))
-           ;; Create a temporary export backend that strips footnotes from title.
-           ;; Footnotes are not allowed in \section and similar
-           ;; commands that contribute to TOC and footers.
-           ;; See https://orgmode.org/list/691643eb-49d0-45c3-ab7f-a1edbd093bef@gmail.com
-           ;; https://texfaq.org/FAQ-ftnsect
-           (section-no-footnote-backend
-            (org-export-create-backend
-             :parent section-backend
-             :transcoders
-             `((footnote-reference . ignore))))
+	   (section-fmt (org-latex--get-section-format headline info))
 	   (text
 	    (org-export-data-with-backend
-	     (org-element-property :title headline) section-backend info))
+	     (org-element-property :title headline)
+             org-latex--section-backend info))
            (text-no-footnote
             (org-export-data-with-backend
-	     (org-element-property :title headline) section-no-footnote-backend info))
+	     (org-element-property :title headline)
+             org-latex--section-no-footnote-backend info))
 	   (todo
 	    (and (plist-get info :with-todo-keywords)
 		 (let ((todo (org-element-property :todo-keyword headline)))
@@ -2382,8 +2427,10 @@ holding contextual information."
 	       (funcall (plist-get info :latex-format-headline-function)
 			todo todo-type priority
 			(org-export-data-with-backend
+                         ;; Returns alternative title when provided or
+                         ;; title itself.
 			 (org-export-get-alt-title headline info)
-			 section-backend info)
+			 org-latex--section-backend info)
 			(and (eq (plist-get info :with-tags) t) tags)
 			info))
 	      ;; Maybe end local TOC (see `org-latex-keyword').
@@ -2402,25 +2449,80 @@ holding contextual information."
 				  (string-match-p "\\<local\\>" v)
 				  (format "\\stopcontents[level-%d]" level)))))
 		    info t)))))
-	  (if (and (or (and opt-title (not (equal opt-title full-text)))
-                       ;; Heading contains footnotes.  Add optional title
-                       ;; version without footnotes to avoid footnotes in
-                       ;; TOC/footers.
-                       (and (not (equal full-text-no-footnote full-text))
-                            (setq opt-title full-text-no-footnote)))
-		   (string-match "\\`\\\\\\(.+?\\){" section-fmt))
-              (format (replace-match "\\1[%s]" nil nil section-fmt 1)
-		      ;; Replace square brackets with parenthesis
-		      ;; since square brackets are not supported in
-		      ;; optional arguments.
-		      (replace-regexp-in-string
-		       "\\[" "(" (replace-regexp-in-string "\\]" ")" opt-title))
-		      full-text
-		      (concat headline-label pre-blanks contents))
-	    ;; Impossible to add an alternative heading.  Fallback to
-	    ;; regular sectioning format string.
-	    (format section-fmt full-text
-		    (concat headline-label pre-blanks contents))))))))
+          ;; When do we need to explicitly specify a heading for TOC?
+          ;; 1. On numbered section with footnotes in title or alt_title
+          ;; 2. On an unnumbered section if :UNNUMBERED: allows it regardless of footnotes
+          ;; This applies to anything that may go into the ToC.
+          ;; Specifically for paragraphs, see first answer of
+          ;; https://tex.stackexchange.com/questions/288072/footnotes-within-paragraph
+          (let ((section-kw
+                 (and (string-match "\\`\\\\\\(.+?\\){" section-fmt)
+                      (match-string 1 section-fmt)))
+                need-alternative-toc-title)
+            (if (not section-kw)
+                ;; We only know how to add \SECTION-KW{...} to TOC.
+                (setq need-alternative-toc-title nil)
+              (if (string-suffix-p "*" section-kw)
+                  ;; FIXME: In theory, user may customize section-fmt
+                  ;; to use, e.g. \section{...} for unnumbered headings
+                  ;; We do not handle such scenario.
+                  (progn ;; unnumbered sections (ending with *)
+                    ;; Then we need to obey what the :UNNUMBERED: property says
+                    (if org-latex-toc-include-unnumbered
+                        ;; Treat the ToC closer to what other exporters do
+                        ;; Include unnumbered section into TOC unless
+                        ;; explicitly requested not to.
+                        (if (string= unnumbered-type "notoc")
+                            (setq need-alternative-toc-title nil)
+                          (setq need-alternative-toc-title t))
+                      ;; Ignore unnumbered headings in ToC - as in LaTeX
+                      ;; unless explicitly requested to include.
+                      (if (string= unnumbered-type "toc")
+                          (setq need-alternative-toc-title t)
+                        (setq need-alternative-toc-title nil))))
+                ;; Numbered sections
+                ;; Specify special TOC title only when there is
+                ;; opt-title or when title contains footnotes.
+                (if (and (string= full-text full-text-no-footnote)  ;; no footnotes
+                         ;; opt-title is either ALT_TITLE or title itself
+                         ;; as returned by `org-export-get-alt-title'
+                         (string= full-text opt-title)) ;; same alternative title
+                    (setq need-alternative-toc-title nil)
+                  (setq need-alternative-toc-title t))))
+            ;; In all cases
+            ;; Get rid of the footnotes in opt-title
+            (when (and (not (string= full-text-no-footnote full-text)) ;; when we have footnotess
+                       (string= full-text opt-title))      ;; And we do not impose an alternative title
+              (setq opt-title full-text-no-footnote))
+	    (if need-alternative-toc-title
+                (let ((new-format section-fmt)
+                      (new-extra  "")) ;; put the addcontentsline here
+                  (if (string-suffix-p "*" section-kw)
+                      ;; Subsection that needs alternative title:
+                      ;; Keep section format, use \\addcontentsline
+                      (setq new-extra
+                            (format "\\addcontentsline{toc}{%s}{%s}\n"
+                                    (string-remove-suffix "*" section-kw)
+                                    opt-title))
+                    ;; section... we need the brackets
+                    (let*
+		        ;; Replace square brackets with parenthesis
+		        ;; since square brackets are not supported in
+		        ;; optional arguments.
+                        ((un-bracketed-alt (replace-regexp-in-string
+                                            "\\[" "(" (replace-regexp-in-string "\\]" ")" opt-title)))
+                         (replacement-re (concat
+                                          "\\1["
+                                          (replace-regexp-in-string (rx "\\") "\\\\" un-bracketed-alt nil t)
+                                          "]")))
+                      (setq new-format (replace-match replacement-re nil nil section-fmt 1))))
+                  (format new-format
+                          full-text
+		          (concat headline-label new-extra pre-blanks contents)))
+	      ;; Don't need or cannot have alternative heading.
+	      ;; Use regular sectioning format string.
+	      (format section-fmt full-text
+		      (concat headline-label pre-blanks contents)))))))))
 
 (defun org-latex-format-headline-default-function
     (todo _todo-type priority text tags _info)
@@ -2428,7 +2530,7 @@ holding contextual information."
 See `org-latex-format-headline-function' for details."
   (concat
    (and todo (format "{\\bfseries\\sffamily %s} " todo))
-   (and priority (format "\\framebox{\\#%c} " priority))
+   (and priority (format "\\framebox{\\#%s} " (org-priority-to-string priority)))
    text
    (and tags
 	(format "\\hfill{}\\textsc{%s}"
@@ -3119,6 +3221,8 @@ contextual information."
                   "{[}"
                   output
                   nil nil 1))
+    ;; When inside verse block, use special rules.
+    (setq output (org-latex--plain-text-verse-block output text))
     ;; Return value.
     output))
 
@@ -4188,6 +4292,48 @@ channel."
 
 ;;;; Verse Block
 
+(defun org-latex--plain-text-verse-block (contents plain-text)
+  "Format CONTENTS if PLAIN-TEXT is inside verse environment.
+INFO is the communication plist.
+Return CONTENTS unchanged when TEXT is not inside verse environment or
+when TEXT is a part of footnote reference.
+
+In a verse environment, add a line break to each newline character and
+change each white space at beginning of a line into a normal space,
+calculated with `\\fontdimen2\\font'.  One or more blank lines between
+lines are exported as a single blank line.  If the `:lines' attribute
+is used, the last verse of each stanza ends with the string `\\!',
+according to the syntax of the `verse' package.  The separation between
+stanzas can be controlled with the length `\\stanzaskip', of the
+aforementioned package.  If the `:literal' attribute is used, all
+blank lines are preserved and exported as `\\vspace*{\\baselineskip}',
+including the blank lines before or after CONTENTS."
+  (if-let* ((verse-block (org-element-lineage plain-text 'verse-block))
+            ;; VALUEFORM
+            ((not (org-element-lineage plain-text 'footnote-reference))))
+      (let* ((lin (org-export-read-attribute :attr_latex verse-block :lines))
+             (lit (org-export-read-attribute :attr_latex verse-block :literal)))
+	(replace-regexp-in-string
+	 "^[ \t]+" (lambda (m) (format "\\hspace*{%d\\fontdimen2\\font}" (length m)))
+	 (replace-regexp-in-string
+          (if (not lit)
+	      (rx-to-string
+               `(seq (group "\\\\\n")
+		     (1+ (group line-start (0+ space) "\\\\\n"))))
+	    "^[ \t]*\\\\$")
+	  (if (not lit)
+	      (if lin "\\\\!\n\n" "\n\n")
+	    "\\vspace*{\\baselineskip}")
+	  (replace-regexp-in-string
+	   "\\([ \t]*\\\\\\\\\\)?[ \t]*\n"
+           "\\\\\n"
+	   contents
+           nil t)
+          nil t)
+         nil t))
+    ;; Not in verse block, return CONTENTS unchanged.
+    contents))
+
 (defun org-latex-verse-block (verse-block contents info)
   "Transcode a VERSE-BLOCK element from Org to LaTeX.
 CONTENTS is verse block contents.  INFO is a plist holding
@@ -4195,57 +4341,27 @@ contextual information."
   (let* ((lin (org-export-read-attribute :attr_latex verse-block :lines))
          (latcode (org-export-read-attribute :attr_latex verse-block :latexcode))
          (cent (org-export-read-attribute :attr_latex verse-block :center))
-         (lit (org-export-read-attribute :attr_latex verse-block :literal))
          (attr (concat
-		(if cent "[\\versewidth]" "")
-		(if lin (format "\n\\poemlines{%s}" lin) "")
-		(if latcode (format "\n%s" latcode) "")))
+	        (if cent "[\\versewidth]" "")
+	        (if lin (format "\n\\poemlines{%s}" lin) "")
+	        (if latcode (format "\n%s" latcode) "")))
+         (lit (org-export-read-attribute :attr_latex verse-block :literal))
          (versewidth (org-export-read-attribute :attr_latex verse-block :versewidth))
          (vwidth (if versewidth (format "\\settowidth{\\versewidth}{%s}\n" versewidth) ""))
          (linreset (if lin "\n\\poemlines{0}" "")))
-    (concat
-     (org-latex--wrap-label
-      verse-block
-      ;; In a verse environment, add a line break to each newline
-      ;; character and change each white space at beginning of a line
-      ;; into a normal space, calculated with `\fontdimen2\font'.  One
-      ;; or more blank lines between lines are exported as a single
-      ;; blank line.  If the `:lines' attribute is used, the last
-      ;; verse of each stanza ends with the string `\\!', according to
-      ;; the syntax of the `verse' package. The separation between
-      ;; stanzas can be controlled with the length `\stanzaskip', of
-      ;; the aforementioned package.  If the `:literal' attribute is
-      ;; used, all blank lines are preserved and exported as
-      ;; `\vspace*{\baselineskip}', including the blank lines before
-      ;; or after CONTENTS.
-      (format "%s\\begin{verse}%s\n%s\\end{verse}%s"
-	      vwidth
-	      attr
-	      (replace-regexp-in-string
-	       "^[ \t]+" (lambda (m) (format "\\hspace*{%d\\fontdimen2\\font}" (length m)))
-	       (replace-regexp-in-string
-                (if (not lit)
-		    (rx-to-string
-                     `(seq (group "\\\\\n")
-		           (1+ (group line-start (0+ space) "\\\\\n"))))
-		  "^[ \t]*\\\\$")
-	        (if (not lit)
-		    (if lin "\\\\!\n\n" "\n\n")
-		  "\\vspace*{\\baselineskip}")
-	        (replace-regexp-in-string
-	         "\\([ \t]*\\\\\\\\\\)?[ \t]*\n"
-                 "\\\\\n"
-	         (if (not lit)
-		     (concat (org-trim contents t) "\n")
-		   contents)
-                 nil t)
-                nil t)
-               nil t)
-              linreset)
-      info)
-     ;; Insert footnote definitions, if any, after the environment, so
-     ;; the special formatting above is not applied to them.
-     (org-latex--delayed-footnotes-definitions verse-block info))))
+    (org-latex--wrap-label
+     verse-block
+     (format "%s\\begin{verse}%s\n%s\\end{verse}%s"
+             vwidth attr
+             ;; If the `:literal' attribute is used, all blank lines
+             ;; are preserved and exported as
+             ;; `\\vspace*{\\baselineskip}', including the blank lines
+             ;; before or after CONTENTS.
+             (if (not lit)
+	         (concat (org-trim contents t) "\n")
+	       contents)
+             linreset)
+     info)))
 
 
 ;;; End-user functions

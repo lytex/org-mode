@@ -1,6 +1,6 @@
 ;;; org-macs.el --- Top-level Definitions for Org -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2004-2025 Free Software Foundation, Inc.
+;; Copyright (C) 2004-2026 Free Software Foundation, Inc.
 
 ;; Author: Carsten Dominik <carsten.dominik@gmail.com>
 ;; Maintainer: Ihor Radchenko <yantar92 at posteo dot net>
@@ -110,10 +110,8 @@ Version mismatch is commonly encountered in the following situations:
 (declare-function org-mode "org" ())
 (declare-function org-agenda-files "org" (&optional unrestricted archives))
 (declare-function org-time-string-to-seconds "org" (s))
-(declare-function org-fold-show-context "org-fold" (&optional key))
 (declare-function org-fold-save-outline-visibility "org-fold" (use-markers &rest body))
 (declare-function org-fold-next-visibility-change "org-fold" (&optional pos limit ignore-hidden-p previous-p))
-(declare-function org-fold-core-with-forced-fontification "org-fold" (&rest body))
 (declare-function org-fold-folded-p "org-fold" (&optional pos limit ignore-hidden-p previous-p))
 (declare-function org-time-convert-to-list "org-compat" (time))
 (declare-function org-buffer-text-pixel-width "org-compat" ())
@@ -275,6 +273,16 @@ This function is only useful when called from Agenda buffer."
   (declare (debug (form body)) (indent 0))
   `(cl-letf (((symbol-function #'org-element--cache-active-p) (lambda (&rest _) nil)))
      ,@body))
+
+(defmacro org-with-syntax-table (table &rest body)
+  "Evaluate BODY with syntax table of current buffer set to TABLE.
+
+This is the same as `with-syntax-table' except that it also binds
+`parse-sexp-lookup-properties' to nil."
+  (declare (debug t) (indent 1))
+  `(with-syntax-table ,table
+     (let ((parse-sexp-lookup-properties nil))
+       ,@body)))
 
 
 ;;; Buffer and windows
@@ -674,7 +682,14 @@ ones and overrule settings in the other lists."
     org-element--cache-diagnostics-ring-size
     org-element--cache-sync-keys
     org-element--cache-sync-requests
-    org-element--cache-sync-timer)
+    org-element--cache-sync-timer
+    ;; FIXME: Avoid copying `buffer-file-name' - when closing a
+    ;; temporary buffer, org-persist badly interacts with multiple
+    ;; _different_ buffers with the same `buffer-file-name' and may
+    ;; modify (via `org-element--cache-persist-before-write' by side
+    ;; effect the cache in a _different_ buffer (whatever comes first
+    ;; in `get-file-buffer').
+    buffer-file-name)
   "List of local variables that cannot be transferred to another buffer.")
 
 (defun org-get-local-variables ()
@@ -1193,7 +1208,7 @@ STRING width.  When REFERENCE-FACE is nil, `default' face is used."
                      (push el result)))
                  result)))
           (current-char-property-alias-alist char-property-alias-alist))
-      (with-current-buffer (get-buffer-create " *Org string width*")
+      (with-current-buffer (get-buffer-create " *Org string width*" t)
         (setq-local display-line-numbers nil)
         (setq-local line-prefix nil)
         (setq-local wrap-prefix nil)
@@ -1221,7 +1236,7 @@ STRING width.  When REFERENCE-FACE is nil, `default' face is used."
               (setq symbol-width (org-buffer-text-pixel-width))))
           (if pixels
               pixel-width
-            (ceiling pixel-width symbol-width)))))))
+            (round pixel-width symbol-width)))))))
 
 (defmacro org-current-text-column ()
   "Like `current-column' but ignore display properties.
@@ -1706,18 +1721,33 @@ it for output."
                         (file-relative-name source pwd))
                     source))
          (log-buf (and log-buf (get-buffer-create log-buf)))
-         (time (file-attribute-modification-time (file-attributes output))))
+         (time (file-attribute-modification-time (file-attributes output)))
+         exit-status (did-error nil))
     (save-window-excursion
       (dolist (command commands)
         (cond
          ((functionp command)
+          ;; We could treat return value of the function
+          ;; as return code in shell command, but that would be
+          ;; a breaking changed compared to historical behavior.
+          ;; Functions might still take care to remove the target file
+          ;; (if it already exists) to mark failure.
           (funcall command (shell-quote-argument relname)))
          ((stringp command)
           (let ((shell-command-dont-erase-buffer t))
-            (shell-command command log-buf))))))
+            (setq exit-status (shell-command command log-buf))
+            (when (and (numberp exit-status) (> exit-status 0))
+              (setq did-error t)))))))
     ;; Check for process failure.  Output file is expected to be
     ;; located in the same directory as SOURCE.
-    (unless (org-file-newer-than-p output time)
+    ;; Sometimes, the (LaTeX) process fails still producing output.
+    ;; Then, assume compilation success. It is way too common for
+    ;; LaTeX to throw non-0 exit code yet producing perfectly usable
+    ;; pdfs.
+    (when (or (not (file-exists-p output))
+              ;; non-0 exit code and output not updated.
+              (and did-error
+                   (not (org-file-newer-than-p output time))))
       (ignore (defvar org-batch-test))
       ;; Display logs when running tests.
       (when (bound-and-true-p org-batch-test)
@@ -1816,6 +1846,15 @@ indirectly called by the latter."
                (or (not (alist-get 'same-frame alist))
                    (eq (window-frame) (window-frame window))))
       (window--display-buffer buffer window 'reuse alist))))
+
+(defun org-base-buffer-file-name (&optional buffer)
+  "Resolve the base file name for the provided BUFFER.
+If BUFFER is not provided, default to the current buffer.  If
+BUFFER does not have a file name associated with it (e.g. a
+transient buffer) then return nil."
+  (if-let* ((base-buffer (buffer-base-buffer buffer)))
+      (buffer-file-name base-buffer)
+    (buffer-file-name buffer)))
 
 (provide 'org-macs)
 

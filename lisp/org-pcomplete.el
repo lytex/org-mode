@@ -1,6 +1,6 @@
 ;;; org-pcomplete.el --- In-buffer Completion Code -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2004-2025 Free Software Foundation, Inc.
+;; Copyright (C) 2004-2026 Free Software Foundation, Inc.
 ;;
 ;; Author: Carsten Dominik <carsten.dominik@gmail.com>
 ;;         John Wiegley <johnw at gnu dot org>
@@ -37,7 +37,6 @@
 (require 'org-compat)
 (require 'pcomplete)
 
-(declare-function org-at-heading-p "org" (&optional ignored))
 (declare-function org-babel-combine-header-arg-lists "ob-core" (original &rest others))
 (declare-function org-babel-get-src-block-info "ob-core" (&optional no-eval datum))
 (declare-function org-before-first-heading-p "org" ())
@@ -51,7 +50,6 @@
 (declare-function org-export-backend-options "ox" (cl-x) t)
 (declare-function org-get-buffer-tags "org" ())
 (declare-function org-get-export-keywords "org" ())
-(declare-function org-get-heading "org" (&optional no-tags no-todo no-priority no-comment))
 (declare-function org-get-tags "org" (&optional pos local))
 (declare-function org-link-heading-search-string "ol" (&optional string))
 (declare-function org-tag-alist-to-string "org" (alist &optional skip-key))
@@ -157,6 +155,26 @@ The return value is a string naming the thing at point."
     (while (setq e (pop list))
       (setq res (cons (downcase e) (cons (upcase e) res))))
     (nreverse res)))
+
+;; Variables and constants
+
+(defconst org-block-keywords
+  (let (block-names)
+    (dolist (name
+	     '("CENTER" "COMMENT" "EXAMPLE" "EXPORT" "QUOTE" "SRC"
+	       "VERSE")
+	     block-names)
+      (push (format "END_%s" name) block-names)
+      (push (concat "BEGIN_"
+		    name
+		    ;; Since language is compulsory in
+		    ;; export blocks source blocks, add
+		    ;; a space.
+		    (and (member name '("EXPORT" "SRC")) " "))
+	    block-names)
+      (push (concat "ATTR_" name ": ") block-names))
+    block-names)
+  "Keywords related to blocks.")
 
 
 ;;; Completion API
@@ -219,20 +237,7 @@ When completing for #+STARTUP, for example, this function returns
 		    org-options-keywords)
 	    (mapcar (lambda (keyword) (concat keyword ": "))
 		    org-element-affiliated-keywords)
-	    (let (block-names)
-	      (dolist (name
-		       '("CENTER" "COMMENT" "EXAMPLE" "EXPORT" "QUOTE" "SRC"
-			 "VERSE")
-		       block-names)
-		(push (format "END_%s" name) block-names)
-		(push (concat "BEGIN_"
-			      name
-			      ;; Since language is compulsory in
-			      ;; export blocks source blocks, add
-			      ;; a space.
-			      (and (member name '("EXPORT" "SRC")) " "))
-		      block-names)
-		(push (format "ATTR_%s: " name) block-names)))
+            org-block-keywords
 	    (mapcar (lambda (keyword) (concat keyword ": "))
 		    (org-get-export-keywords))))
    (substring pcomplete-stub 2)))

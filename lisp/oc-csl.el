@@ -1,6 +1,6 @@
 ;;; oc-csl.el --- csl citation processor for Org -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2021-2025 Free Software Foundation, Inc.
+;; Copyright (C) 2021-2026 Free Software Foundation, Inc.
 
 ;; Author: Nicolas Goaziou <mail@nicolasgoaziou.fr>
 ;; Maintainer: András Simonyi <andras.simonyi@gmail.com>
@@ -124,7 +124,6 @@
 (require 'citeproc nil t)
 (declare-function citeproc-style-cite-note "ext:citeproc")
 (declare-function citeproc-proc-style "ext:citeproc")
-(declare-function citeproc-bt-entry-to-csl "ext:citeproc")
 (declare-function citeproc-locale-getter-from-dir "ext:citeproc")
 (declare-function citeproc-create "ext:citeproc")
 (declare-function citeproc-citation-create "ext:citeproc")
@@ -137,13 +136,12 @@
 (declare-function citeproc-style-cite-superscript-p "ext:citeproc")
 
 (declare-function org-element-interpret-data "org-element" (data))
-(declare-function org-element-map "org-element" (data types fun &optional info first-match no-recursion with-affiliated))
+(declare-function org-element-map "org-element" (data types fun &optional info first-match no-recursion with-affiliated no-undefer))
 (declare-function org-element-property "org-element-ast" (property node))
-(declare-function org-element-put-property "org-element-ast" (node property value))
 
-(declare-function org-export-data "org-export" (data info))
-(declare-function org-export-derived-backend-p "org-export" (backend &rest backends))
-(declare-function org-export-get-footnote-number "org-export" (footnote info &optional data body-first))
+(declare-function org-export-data "ox" (data info))
+(declare-function org-export-derived-backend-p "ox" (backend &rest backends))
+(declare-function org-export-get-footnote-number "ox" (footnote info &optional data body-first))
 
 
 ;;; Customization
@@ -320,6 +318,24 @@ in the bibliography measured in characters."
   :group 'org-cite
   :type 'string
   :package-version '(Org . "9.7"))
+
+(defcustom org-cite-csl-bibtex-titles-to-sentence-case t
+  "Convert bibtex title fields to sentence-case by default.
+
+When non-nil, title fields in bibtex bibliography entries are
+converted to sentence-case before being formatted according to a
+CSL style, except for entries with a `langid' field specifying a
+non-English language.  When nil, title conversion is limited to
+entries having a `langid' field specifying a variant of English.
+
+Conversion of titles to sentence-case by default is in most cases
+useful because the CSL standard assumes that English titles are
+specified in sentence-case but the bibtex bibliography format
+requires them to be written in title-case."
+  :group 'org-cite
+  :package-version '(Org . "9.8")
+  :type 'boolean
+  :safe #'booleanp)
 
 
 ;;; Internal variables
@@ -579,7 +595,8 @@ property in INFO."
              (processor
               (citeproc-create
                (org-cite-csl--style-file info)
-               (citeproc-hash-itemgetter-from-any bibliography)
+               (citeproc-hash-itemgetter-from-any
+                bibliography (not org-cite-csl-bibtex-titles-to-sentence-case))
                (org-cite-csl--locale-getter)
                locale)))
         (plist-put info :cite-citeproc-processor processor)

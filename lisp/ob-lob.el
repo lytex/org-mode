@@ -1,6 +1,6 @@
 ;;; ob-lob.el --- Functions Supporting the Library of Babel -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2009-2025 Free Software Foundation, Inc.
+;; Copyright (C) 2009-2026 Free Software Foundation, Inc.
 
 ;; Authors: Eric Schulte
 ;;	 Dan Davison
@@ -59,10 +59,6 @@ should not be inherited from a source block.")
       (let* ((info (org-babel-get-src-block-info 'no-eval))
 	     (source-name (nth 4 info)))
 	(when source-name
-	  (setf (nth 1 info)
-		(if (org-babel-noweb-p (nth 2 info) :eval)
-		    (org-babel-expand-noweb-references info)
-		  (nth 1 info)))
 	  (let ((source (intern source-name)))
 	    (setq org-babel-library-of-babel
 		  (cons (cons source info)

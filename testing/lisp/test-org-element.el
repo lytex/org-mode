@@ -19,7 +19,7 @@
 
 ;;; Code:
 
-(eval-and-compile (require 'cl-lib))
+(eval-when-compile (require 'cl-lib))
 
 (require 'org-element)
 (require 'org)
@@ -301,7 +301,7 @@ Return interpreted string."
   (should (eq 'object (org-element-class '(foo nil) '("secondary"))))
   (should
    (eq 'object
-       (let* ((datum '(foo nil))
+       (let* ((datum (list 'foo nil))
 	      (headline `(headline (:title (,datum) :secondary (:title)))))
 	 (org-element-put-property datum :parent headline)
 	 (org-element-class datum)))))
@@ -515,7 +515,15 @@ Some other text
   ;; Children
   (let ((children '("a" "b" (org-element-create 'foo))))
     (should (equal (cddr (apply #'org-element-create 'bar nil children))
-                   children))))
+                   children)))
+  (let ((children nil))
+    (should (equal (cddr (org-element-create 'bar nil children))
+                   children))
+    (should (equal (cddr (apply #'org-element-create 'bar nil children))
+                   children)))
+  (let ((children (list "foo" nil "bar")))
+    (should (equal (cddr (apply #'org-element-create 'bar nil children))
+                   (delq nil children)))))
 
 (ert-deftest test-org-element/put-property ()
   "Test `org-element-put-property' specifications."
@@ -803,7 +811,8 @@ Some other text
   (should-not (org-element-copy nil))
   ;; Return a copy secondary strings.
   (should (equal '("text") (org-element-copy '("text"))))
-  (should-not (eq '("text") (org-element-copy '("text"))))
+  (let ((secondary (list "test")))
+    (should-not (eq secondary (org-element-copy secondary))))
   ;; Do not alter the source.
   (org-test-with-temp-text "*bold*"
     (let* ((source (org-element-context))
@@ -1599,7 +1608,16 @@ CLOCK: [2023-10-13 Fri 14:40]--[2023-10-13 Fri 14:51] =>  0:11"
   (should
    (org-test-with-temp-text ": A\n "
      (= (org-element-property :end (org-element-at-point))
-	(point-max)))))
+	(point-max))))
+  ;; Correctly parse post-blank
+  (should
+   (org-test-with-temp-text ": A\n "
+     (= (org-element-property :post-blank (org-element-at-point))
+	1)))
+  (should
+   (org-test-with-temp-text ": A\nB"
+     (= (org-element-property :post-blank (org-element-at-point))
+	0))))
 
 
 ;;;; Footnote Definition
@@ -2841,6 +2859,10 @@ Outside list"
 	 (org-element-type (org-element-at-point)))))
   (should
    (eq 'property-drawer
+       (org-test-with-temp-text "\n  \t\n# C\n# C\n  \n\n\n<point>:PROPERTIES:\n:prop: value\n:END:"
+	 (org-element-type (org-element-at-point)))))
+  (should
+   (eq 'property-drawer
        (org-test-with-temp-text "\n<point>:PROPERTIES:\n:prop: value\n:END:"
 	 (org-element-type (org-element-at-point)))))
   ;; Allow properties without value and no property at all.
@@ -3469,7 +3491,31 @@ Outside list"
   (should
    (equal "A "
 	  (org-element-interpret-data
-           (org-element-put-property "A" :post-blank 1)))))
+           (org-element-put-property "A" :post-blank 1))))
+  ;; Obey post-blank property in elements
+  (should
+   (equal "Foo\n\n"
+	  (org-element-interpret-data
+           '(paragraph (:post-blank 1) "Foo"))))
+  (should
+   (equal "Foo\n\n"
+	  (org-element-interpret-data
+           '(section nil (paragraph (:post-blank 1) "Foo")))))
+  (should
+   (equal "Foo\n\n\n"
+	  (org-element-interpret-data
+           '(section (:post-blank 1) (paragraph (:post-blank 1) "Foo"))))))
+
+(ert-deftest test-org-element/org-data-interpreter ()
+  "Test `org-element-org-data-interpreter'."
+  (should
+   (equal (org-test-parse-and-interpret "Test.\n")
+	  "Test.\n"))
+  (should
+   (equal (org-test-parse-and-interpret "
+
+Test.\n")
+	  "\n\nTest.\n")))
 
 (ert-deftest test-org-element/center-block-interpreter ()
   "Test center block interpreter."
@@ -3481,7 +3527,16 @@ Outside list"
   "Test drawer interpreter."
   (should
    (equal (org-test-parse-and-interpret ":TEST:\nTest\n:END:")
-	  ":TEST:\nTest\n:END:\n")))
+	  ":TEST:\nTest\n:END:\n"))
+  (should
+   (equal (org-test-parse-and-interpret ":TEST:\n:END:")
+	  ":TEST:\n:END:\n"))
+  (should
+   (equal (org-test-parse-and-interpret ":TEST:\n\n\n:END:")
+	  ":TEST:\n\n\n:END:\n"))
+  (should
+   (equal (org-test-parse-and-interpret ":TEST:\n\nFoo\n:END:")
+	  ":TEST:\n\nFoo\n:END:\n")))
 
 (ert-deftest test-org-element/dynamic-block-interpreter ()
   "Test dynamic block interpreter."
@@ -3536,6 +3591,14 @@ Outside list"
    (equal (let ((org-comment-string "COMMENT"))
 	    (org-test-parse-and-interpret "* COMMENT Headline"))
 	  "* COMMENT Headline\n"))
+  (should
+   (equal (let ((org-comment-string "COMMENT"))
+	    (org-test-parse-and-interpret "* [#A] COMMENT Headline"))
+	  "* [#A] COMMENT Headline\n"))
+  (should
+   (equal (let ((org-comment-string "COMMENT"))
+	    (org-test-parse-and-interpret "* TODO [#A] COMMENT Headline"))
+	  "* TODO [#A] COMMENT Headline\n"))
   ;; 6. Keep same number of blank lines before body.
   (should
    (equal (org-test-parse-and-interpret
@@ -4492,14 +4555,14 @@ Text
 	      (lambda (hl) (org-element-property :raw-value hl))))))
   (should
    (equal "Test"
-	  (let ((contents "Test"))
+	  (let ((contents (copy-sequence "Test")))
 	    (org-test-with-temp-text contents
 	      (add-text-properties 0 1 '(invisible t) contents)
 	      (org-element-map (org-element-parse-buffer nil t) 'plain-text
 		#'org-no-properties nil t)))))
   (should
    (equal "Test"
-	  (let ((contents "Test"))
+	  (let ((contents (copy-sequence "Test")))
 	    (org-test-with-temp-text (concat "- " contents)
 	      (add-text-properties 0 1 '(invisible t) contents)
 	      (org-element-map (org-element-parse-buffer nil t) 'plain-text
@@ -4735,6 +4798,11 @@ Text
    (eq 'underline
        (org-test-with-temp-text "* Headline _<point>with_ underlining"
 	 (org-element-type (org-element-context)))))
+  ;; Should not find objects in headline tags
+  (should-not
+   (eq 'timestamp
+       (org-test-with-temp-text "* Headline <2020-04-01>        :tag1<point>:"
+         (org-element-type (org-element-context)))))
   ;; Find objects in objects.
   (should
    (eq 'macro
@@ -5226,6 +5294,21 @@ Text
 	   (org-element-at-point)
 	   (insert "+:")
 	   (org-element-type (org-element-at-point))))))
+  ;; Corner case: inserting blank line at :contents-begin modifies
+  ;; structure by adding :pre-blank
+  (should
+   (let ((org-element-use-cache t))
+     (org-test-with-temp-text ":LOGBOOK:\n<point>Paragraph.\n:END:\n"
+       (let ((drawer (org-element-at-point (point-min))))
+         (message "Before insert")
+         (should (org-element-type-p drawer 'drawer))
+         (should (equal (org-element-contents-begin drawer) (point)))
+         (should (equal (org-element-property :pre-blank drawer) 0))
+	 (insert "\n")
+         (message "After insert")
+         (setq drawer (org-element-at-point (point-min)))
+         (should (equal (org-element-contents-begin drawer) (point)))
+         (should (equal (org-element-property :pre-blank drawer) 1))))))
   ;; Properly handle elements not altered by modifications but whose
   ;; parents were removed from cache.
   (should

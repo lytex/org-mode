@@ -1,6 +1,6 @@
 ;;; ox-man.el --- Man Backend for Org Export Engine -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2011-2025 Free Software Foundation, Inc.
+;; Copyright (C) 2011-2026 Free Software Foundation, Inc.
 
 ;; Author: Nicolas Goaziou <n.goaziou at gmail dot com>
 ;;      Luis R Anaya <papoanaya aroba hot mail punto com>
@@ -101,6 +101,7 @@
     (underline . org-man-underline)
     (verbatim . org-man-verbatim)
     (verse-block . org-man-verse-block))
+  :filters-alist '((:filter-parse-tree . org-man--remove-blank))
   :menu-entry
   '(?M "Export to MAN"
        ((?m "As MAN file" org-man-export-to-man)
@@ -300,6 +301,17 @@ This function shouldn't be used for floats.  See
   ;; backslash) cannot be used as per the same man page.
   (replace-regexp-in-string "\\\\" "\\e" text nil t))
 
+
+;;; Filters
+
+(defun org-man--remove-blank (tree _backend info)
+  "Remove :post-blank from TREE elements.
+INFO is the communication plist.
+Avoiding blank lines is adviced by groff_man_style(7) man page."
+  (org-element-map tree org-element-all-elements
+    (lambda (el) (setf (org-element-post-blank el) 0))
+    info)
+  tree)
 
 
 ;;; Template
@@ -315,19 +327,21 @@ holding export options."
                               #'identity
                               (list (plist-get info :man-class-options))
                               " "))))
-         (section-item (plist-get attr :section-id)))
-
+         (section-item (plist-get attr :section-id))
+         ;; Note: groff linter suggests date to be the third argument
+         ;; of .TH
+         (date (and (plist-get info :with-date)
+		    (org-export-data (org-export-get-date info) info))))
     (concat
-
      (cond
       ((and title (stringp section-item))
-       (format ".TH \"%s\" \"%s\" \n" title section-item))
+       (format ".TH \"%s\" \"%s\" \"%s\" \n" title section-item date))
       ((and (string= "" title) (stringp section-item))
-       (format ".TH \"%s\" \"%s\" \n" " " section-item))
+       (format ".TH \"%s\" \"%s\" \"%s\" \n" " " section-item date))
       (title
-       (format ".TH \"%s\" \"1\" \n" title))
+       (format ".TH \"%s\" \"1\" \"%s\" \n" title date))
       (t
-       ".TH \" \" \"1\" "))
+       (format ".TH \" \" \"1\" \"%s\" " date)))
      contents)))
 
 
@@ -535,7 +549,7 @@ contextual information."
               (delete-file in-file)
               (delete-file out-file)
               code-block)
-          (format ".RS\n.nf\n\\fC\\m[black]%s\\m[]\\fP\n.fi\n.RE\n"
+          (format ".RS\n.nf\n\\fC%s\\m[]\\fP\n.fi\n.RE\n"
                   (org-man--protect-example code)))))
 
      ;; Do not use a special package: transcode it verbatim.
@@ -755,7 +769,7 @@ holding contextual information."
 CONTENTS holds the contents of the item.  INFO is a plist holding
 contextual information."
   (if (not (plist-get info :man-source-highlight))
-      (format ".RS\n.nf\n\\fC%s\\fP\n.fi\n.RE\n\n"
+      (format ".RS\n.nf\n\\fC%s\\fP\n.fi\n.RE\n"
 	      (org-man--protect-example (org-export-format-code-default src-block info)))
     (let* ((tmpdir temporary-file-directory)
 	   (in-file  (make-temp-name (expand-file-name "srchilite" tmpdir)))
@@ -779,7 +793,7 @@ contextual information."
 	    (delete-file in-file)
 	    (delete-file out-file)
 	    code-block)
-	(format ".RS\n.nf\n\\fC\\m[black]%s\\m[]\\fP\n.fi\n.RE" (org-man--protect-example code))))))
+	(format ".RS\n.nf\n\\fC%s\\m[]\\fP\n.fi\n.RE" (org-man--protect-example code))))))
 
 
 ;;; Statistics Cookie

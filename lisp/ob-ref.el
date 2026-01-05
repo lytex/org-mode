@@ -1,6 +1,6 @@
 ;;; ob-ref.el --- Babel Functions for Referencing External Data -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2009-2025 Free Software Foundation, Inc.
+;; Copyright (C) 2009-2026 Free Software Foundation, Inc.
 
 ;; Authors: Eric Schulte
 ;;	 Dan Davison
@@ -66,7 +66,7 @@
 (declare-function org-find-property "org" (property &optional value))
 (declare-function org-id-find-id-file "org-id" (id))
 (declare-function org-id-find-id-in-file "org-id" (id file &optional markerp))
-(declare-function org-in-commented-heading-p "org" (&optional no-inheritance))
+(declare-function org-in-commented-heading-p "org" (&optional no-inheritance element))
 (declare-function org-narrow-to-subtree "org" (&optional element))
 (declare-function org-fold-show-context "org-fold" (&optional key))
 

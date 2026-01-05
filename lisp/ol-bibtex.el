@@ -1,6 +1,6 @@
 ;;; ol-bibtex.el --- Links to BibTeX entries        -*- lexical-binding: t; -*-
 ;;
-;; Copyright (C) 2007-2025 Free Software Foundation, Inc.
+;; Copyright (C) 2007-2026 Free Software Foundation, Inc.
 ;;
 ;; Authors: Bastien Guerry <bzg@gnu.org>
 ;;       Carsten Dominik <carsten dot dominik at gmail dot com>
@@ -123,11 +123,6 @@
 (defvar org-property-end-re)
 (defvar org-special-properties)
 (defvar org-window-config-before-follow-link)
-
-(declare-function bibtex-beginning-of-entry "bibtex" ())
-(declare-function bibtex-generate-autokey "bibtex" ())
-(declare-function bibtex-parse-entry "bibtex" (&optional content))
-(declare-function bibtex-url "bibtex" (&optional pos no-browse))
 
 (declare-function org-back-to-heading "org" (&optional invisible-ok))
 (declare-function org-entry-get "org" (pom property &optional inherit literal-nil))
